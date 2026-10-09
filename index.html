@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attendance Report Generator</title>
+
+<!-- jsPDF + AutoTable from CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #F4F6FA;
+    color: #222;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: #1F3864;
+    color: white;
+    padding: 18px 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  header h1 { font-size: 22px; font-weight: 700; }
+  header p { font-size: 13px; color: #C9D4E8; margin-top: 4px; }
+
+  main {
+    flex: 1;
+    max-width: 980px;
+    width: 100%;
+    margin: 24px auto;
+    padding: 0 24px;
+  }
+
+  .card {
+    background: white;
+    border-radius: 8px;
+    padding: 22px 26px;
+    margin-bottom: 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+
+  .card h2 {
+    font-size: 15px;
+    color: #1F3864;
+    margin-bottom: 12px;
+    font-weight: 700;
+  }
+
+  .row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  input[type="text"], input[type="file"], select {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 8px 12px;
+    border: 1px solid #CBD5E0;
+    border-radius: 6px;
+    background: #FAFBFD;
+    transition: border-color 0.15s;
+  }
+  input[type="text"]:focus, select:focus {
+    outline: none;
+    border-color: #1F3864;
+  }
+
+  input[type="text"] { flex: 1; min-width: 200px; }
+
+  label { font-size: 13px; color: #4A5568; font-weight: 500; }
+
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 9px 18px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+    color: white;
+  }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .btn-primary   { background: #1F3864; }
+  .btn-primary:hover:not(:disabled)   { background: #2E4A7D; }
+  .btn-success   { background: #2E7D32; font-size: 15px; padding: 11px 22px; }
+  .btn-success:hover:not(:disabled)   { background: #1B5E20; }
+  .btn-secondary { background: #455A64; }
+  .btn-secondary:hover:not(:disabled) { background: #263238; }
+  .btn-ghost     { background: #B0BEC5; color: #222; }
+  .btn-ghost:hover:not(:disabled)     { background: #90A4AE; }
+
+  .actions { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
+
+  .log {
+    background: #0F172A;
+    color: #D1E0F5;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    padding: 14px 16px;
+    border-radius: 6px;
+    height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .log .ok    { color: #86EFAC; }
+  .log .err   { color: #FCA5A5; }
+  .log .info  { color: #93C5FD; }
+
+  .status {
+    text-align: center;
+    font-size: 13px;
+    color: #555;
+    padding: 12px;
+  }
+
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed #CBD5E0;
+    border-radius: 8px;
+    padding: 26px;
+    text-align: center;
+    color: #718096;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: #FAFBFD;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: #1F3864;
+    background: #EDF2FB;
+    color: #1F3864;
+  }
+  .dropzone strong { color: #1F3864; }
+
+  .file-selected {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: #E2EFDA;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #1F3864;
+    font-weight: 500;
+  }
+  .file-selected button {
+    background: transparent;
+    color: #666;
+    padding: 2px 8px;
+    font-size: 16px;
+    font-weight: 400;
+  }
+  .file-selected button:hover { color: #C62828; }
+
+  .options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+  }
+  .options > div { display: flex; flex-direction: column; gap: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Attendance Report Generator</h1>
+  <p>Convert ALOG attendance logs to PDF reports — runs entirely in your browser</p>
+</header>
+
+<main>
+
+  <!-- STEP 1: Input file -->
+  <section class="card">
+    <h2>1. Select attendance log</h2>
+    <div id="dropzone" class="dropzone">
+      <strong>Click to choose a file</strong> or drag &amp; drop your
+      <code>ALOG_*.txt</code> here
+    </div>
+    <input type="file" id="fileInput" accept=".txt,.log" hidden>
+    <div id="fileSelected" style="display:none;" class="file-selected">
+      <span id="fileName"></span>
+      <button id="clearFile" title="Remove">✕</button>
+    </div>
+  </section>
+
+  <!-- STEP 2: Options -->
+  <section class="card">
+    <h2>2. Report options</h2>
+    <div class="options">
+      <div>
+        <label for="year">Year</label>
+        <select id="year"></select>
+      </div>
+      <div>
+        <label for="month">Month</label>
+        <select id="month">
+          <option value="1">January</option>
+          <option value="2">February</option>
+          <option value="3">March</option>
+          <option value="4">April</option>
+          <option value="5">May</option>
+          <option value="6">June</option>
+          <option value="7">July</option>
+          <option value="8">August</option>
+          <option value="9" selected>September</option>
+          <option value="10">October</option>
+          <option value="11">November</option>
+          <option value="12">December</option>
+        </select>
+      </div>
+      <div>
+        <label for="perPage">Employees per page</label>
+        <select id="perPage">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+      <div>
+        <label for="excluded">Exclude employees (EnNo, comma-separated)</label>
+        <input type="text" id="excluded" value="00000004">
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 3: Actions -->
+  <section class="card">
+    <h2>3. Generate</h2>
+    <div class="actions">
+      <button id="generateBtn" class="btn-success" disabled>
+        Generate PDF Report
+      </button>
+      <button id="clearBtn" class="btn-ghost">Clear</button>
+    </div>
+  </section>
+
+  <!-- Log -->
+  <section class="card">
+    <h2>Log</h2>
+    <div class="log" id="log"></div>
+  </section>
+
+  <div class="status" id="status">Ready.</div>
+</main>
+
+<script>
+/* =====================================================================
+ *  Config
+ * ===================================================================*/
+const CFG = {
+  FONT_SIZE: 6.5,
+  PADDING: 3,
+  MIN_DAY_W: 8,
+  MARGIN_X: 10,
+  MARGIN_Y: 8,
+  TITLE_BLOCK_H: 16,
+  EMP_TITLE_H: 4.5,
+  SUMMARY_ROW_H: 4,
+  GAP_H: 3,
+  SLACK: 8,
+  COLOR_HEADER: [31, 56, 100],
+  COLOR_HEADER_TEXT: [255, 255, 255],
+  COLOR_WEEKEND: [239, 239, 239],
+  COLOR_ABSENT: [252, 228, 228],
+  COLOR_PRESENT: [226, 239, 218],
+  COLOR_BORDER: [156, 163, 175],
+  COLOR_LABEL_BG: [243, 244, 246],
+};
+
+/* =====================================================================
+ *  State
+ * ===================================================================*/
+let records = [];       // parsed punch records
+let currentFile = null;
+
+/* =====================================================================
+ *  Logging
+ * ===================================================================*/
+function log(msg, cls = '') {
+  const el = document.getElementById('log');
+  const time = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = `[${time}]  ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+/* =====================================================================
+ *  Populate year dropdown
+ * ===================================================================*/
+(function initYears() {
+  const sel = document.getElementById('year');
+  const curYear = new Date().getFullYear();
+  for (let y = curYear - 5; y <= curYear + 5; y++) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    if (y === curYear) opt.selected = true;
+    sel.appendChild(opt);
+  }
+})();
+
+/* =====================================================================
+ *  File handling
+ * ===================================================================*/
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileSelected = document.getElementById('fileSelected');
+const fileNameEl  = document.getElementById('fileName');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => {
+  e.preventDefault(); dropzone.classList.add('dragover');
+});
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+document.getElementById('clearFile').addEventListener('click', () => {
+  currentFile = null;
+  records = [];
+  fileSelected.style.display = 'none';
+  fileInput.value = '';
+  document.getElementById('generateBtn').disabled = true;
+  setStatus('File cleared.');
+});
+
+function handleFile(file) {
+  if (!/\.(txt|log)$/i.test(file.name)) {
+    alert('Please choose a .txt or .log file.');
+    return;
+  }
+  currentFile = file;
+  fileNameEl.textContent = `${file.name}  (${(file.size / 1024).toFixed(1)} KB)`;
+  fileSelected.style.display = 'flex';
+  setStatus('Reading file…');
+  log(`File selected: ${file.name}`, 'info');
+  readFile(file);
+}
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let text = e.target.result;
+      // Strip BOM
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      parseRecords(text);
+      document.getElementById('generateBtn').disabled = false;
+      setStatus(`Ready — ${records.length} records loaded.`);
+    } catch (err) {
+      log(`Parse error: ${err.message}`, 'err');
+      setStatus('Failed to parse file.');
+    }
+  };
+  reader.onerror = () => {
+    log('Error reading file.', 'err');
+    setStatus('Read error.');
+  };
+  // Try UTF-8 first; if it produces mojibake we fall back — but modern
+  // browsers auto-detect UTF-16 BOM, so this usually just works.
+  reader.readAsText(file, 'UTF-8');
+}
+
+/* =====================================================================
+ *  Parsing
+ * ===================================================================*/
+function parseRecords(text) {
+  const lines = text.split(/\r?\n/);
+  records = [];
+  let detectedEncoding = 'UTF-8';
+
+  // Check for UTF-16 BOM character artifacts (rare in browser, but possible)
+  if (text.includes('\u0000')) detectedEncoding = 'UTF-16 (decoded)';
+  log(`Parsed with ${detectedEncoding}`, 'info');
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    let parts = line.split('\t');
+    if (parts.length < 10) parts = line.split(/\s+/);
+    if (parts.length < 10) continue;
+    records.push({
+      enno:     (parts[2] || '').trim(),
+      name:     (parts[3] || '').trim(),
+      inout:    (parts[6] || '').trim(),
+      datetime: (parts[9] || '').trim(),
+    });
+  }
+  log(`Loaded ${records.length} punch records`, 'ok');
+}
+
+/* =====================================================================
+ *  Attendance logic
+ * ===================================================================*/
+function buildEmployeeMap(recs) {
+  const map = {};
+  for (const r of recs) {
+    if (r.name && (!map[r.enno] || !map[r.enno])) map[r.enno] = r.name;
+    else if (!map[r.enno]) map[r.enno] = `Employee_${r.enno}`;
+  }
+  return map;
+}
+
+function groupByEmployeeDay(recs) {
+  const g = {};
+  for (const r of recs) {
+    const dt = new Date(r.datetime.replace(' ', 'T'));
+    const key = `${r.enno}__${dt.toISOString().slice(0, 10)}`;
+    if (!g[key]) g[key] = [];
+    g[key].push({ dt, r });
+  }
+  for (const k in g) g[k].sort((a, b) => a.dt - b.dt);
+  return g;
+}
+
+function computeDailyStatus(recs) {
+  if (!recs.length) return { arrived: null, dept: null, work: '00:00' };
+  const ons  = recs.filter(x => x.r.inout === 'DutyOn').map(x => x.dt);
+  const outs = recs.filter(x => x.r.inout === 'DutyOff' || x.r.inout === 'GoOut')
+                   .map(x => x.dt);
+  const arrived = ons.length ? new Date(Math.min(...ons)) : null;
+  const dept    = outs.length ? new Date(Math.max(...outs)) : null;
+  let work = '00:00';
+  if (arrived && dept && dept > arrived) {
+    const m = Math.floor((dept - arrived) / 60000);
+    work = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  }
+  return { arrived, dept, work };
+}
+
+function getMonthDays(year, month) {
+  const last = new Date(year, month, 0).getDate();
+  const days = [];
+  for (let d = 1; d <= last; d++) days.push(new Date(year, month - 1, d));
+  return days;
+}
+
+function isWeekend(dt) { const d = dt.getDay(); return d === 0 || d === 6; }
+function fmtTime(dt)   { return dt ? `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}` : '-'; }
+function fmtDay(dt)    { return ['Su','Mo','Tu','We','Th','Fr','Sa'][dt.getDay()]; }
+
+/* =====================================================================
+ *  PDF generation
+ * ===================================================================*/
+function generatePDF() {
+  const { jsPDF } = window.jspdf;
+  const year     = parseInt(document.getElementById('year').value, 10);
+  const month    = parseInt(document.getElementById('month').value, 10);
+  const perPage  = parseInt(document.getElementById('perPage').value, 10);
+  const exclStr  = document.getElementById('excluded').value.trim();
+  const excluded = new Set(exclStr.split(',').map(s => s.trim()).filter(Boolean));
+
+  if (!records.length) {
+    alert('No records loaded.');
+    return;
+  }
+
+  log('Building PDF…', 'info');
+  setStatus('Generating PDF…');
+
+  const days = getMonthDays(year, month);
+  const empMap = buildEmployeeMap(records);
+  const grouped = groupByEmployeeDay(records);
+  const validDates = new Set(days.map(d =>
+    d.toISOString().slice(0, 10)));
+
+  // Build employee list
+  const allEnnos = [...new Set(records.map(r => r.enno))].sort();
+  const employees = [];
+  for (const enno of allEnnos) {
+    if (excluded.has(enno)) { log(`Excluded EnNo ${enno}`, 'info'); continue; }
+    const hasDutyOn = records.some(r =>
+      r.enno === enno && r.inout === 'DutyOn' &&
+      validDates.has(new Date(r.datetime.replace(' ', 'T')).toISOString().slice(0, 10)));
+    if (!hasDutyOn) { log(`Skipped EnNo ${enno}: no DutyOn`, 'info'); continue; }
+    employees.push(erno => enno);
+    employees[employees.length - 1] = enno;
+  }
+  log(`Employees in report: ${employees.length}`, 'ok');
+
+  // ---- Page size ----
+  // We compute the required page width in mm so all day columns fit
+  const labelW = 16;   // mm
+  const dayW   = 9.5;  // mm — enough for "10:27" at font size 6.5
+  const tableW = labelW + dayW * days.length;
+
+  const rowH       = CFG.FONT_SIZE + 3.5;
+  const dailyH     = 8 * rowH;
+  const blockH     = CFG.EMP_TITLE_H + 2 * CFG.SUMMARY_ROW_H + 0.8 + dailyH + CFG.GAP_H;
+  const blockHmm   = blockH * 0.352778;
+
+  const titleHmm = CFG.TITLE_BLOCK_H;
+  const pageWmm  = Math.max(tableW + CFG.MARGIN_X * 2, 297);
+  const pageHmm  = titleHmm + CFG.SLACK + blockHmm * perPage + CFG.MARGIN_Y * 2;
+
+  log(`Page size: ${pageWmm.toFixed(1)} × ${pageHmm.toFixed(1)} mm`, 'info');
+
+  // ---- Create PDF ----
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: [pageWmm, pageHmm],
+    compress: true,
+  });
+
+  let cursorY = CFG.MARGIN_Y;
+
+  // Title block
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(...CFG.COLOR_HEADER);
+  doc.text(`Attendance Report — ${String(month).padStart(2, '0')}/${year}`,
+           pageWmm / 2, cursorY + 6, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(85, 85, 85);
+  const lastDay = days[days.length - 1].getDate();
+  doc.text(`Report Date From: 01-${String(month).padStart(2,'0')}-${year}` +
+           `   To: ${String(lastDay).padStart(2,'0')}-${String(month).padStart(2,'0')}-${year}`,
+           pageWmm / 2, cursorY + 12, { align: 'center' });
+  cursorY += titleHmm;
+
+  // ---- Render employees ----
+  employees.forEach((enno, idx) => {
+    const empName = empMap[enno] || `Employee_${enno}`;
+
+    // Build daily data
+    const dailyData = {};
+    let present = 0;
+    let totalMin = 0;
+    for (const d of days) {
+      const iso = d.toISOString().slice(0, 10);
+      const recs = grouped[`${enno}__${iso}`] || [];
+      const { arrived, dept, work } = computeDailyStatus(recs);
+      if (arrived) {
+        present++;
+        if (work !== '00:00') {
+          const [h, m] = work.split(':').map(Number);
+          totalMin += h * 60 + m;
+        }
+      }
+      dailyData[iso] = { arrived, dept, work, weekend: isWeekend(d) };
+    }
+    const absent = days.length - present;
+    const workTotal = `${Math.floor(totalMin / 60)}:${String(totalMin % 60).padStart(2, '0')}`;
+
+    // Employee title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...CFG.COLOR_HEADER);
+    doc.text(`Employee: ${empName}   (EmpCode: ${enno})`,
+             CFG.MARGIN_X, cursorY + 3);
+    cursorY += CFG.EMP_TITLE_H;
+
+    // Summary table
+    const summaryHead = [['Present', 'Absent', 'Paid Days', 'Work Hrs.', 'OvTim']];
+    const summaryBody = [[present, absent, present, workTotal, '0:00']];
+
+    doc.autoTable({
+      startY: cursorY,
+      head: summaryHead,
+      body: summaryBody,
+      theme: 'grid',
+      styles: {
+        fontSize: 7,
+        cellPadding: 1.2,
+        halign: 'center',
+        valign: 'middle',
+        textColor: 20,
+        lineColor: CFG.COLOR_BORDER,
+        lineWidth: 0.1,
+      },
+      headStyles: {
+        fillColor: CFG.COLOR_HEADER,
+        textColor: CFG.COLOR_HEADER_TEXT,
+        fontStyle: 'bold',
+        fontSize: 7,
+      },
+      bodyStyles: { fontSize: 7 },
+      columnStyles: {
+        0: { cellWidth: 20 }, 1: { cellWidth: 20 },
+        2: { cellWidth: 20 }, 3: { cellWidth: 20 }, 4: { cellWidth: 20 },
+      },
+      margin: { left: CFG.MARGIN_X },
+      tableWidth: 100,
+    });
+    cursorY = doc.lastAutoTable.finalY + 1;
+
+    // Daily grid
+    const dateRow   = ['Date'];
+    const dayRow    = ['Day'];
+    const arrRow    = ['Arrived'];
+    const deptRow   = ['Dept.'];
+    const workRow   = ['Work Hrs.'];
+    const otRow     = ['O.T.'];
+    const statusRow = ['Status'];
+    const shiftRow  = ['Shift'];
+
+    for (const d of days) {
+      const iso = d.toISOString().slice(0, 10);
+      const info = dailyData[iso];
+      dateRow.push(String(d.getDate()).padStart(2, '0'));
+      dayRow.push(fmtDay(d));
+      arrRow.push(fmtTime(info.arrived));
+      deptRow.push(fmtTime(info.dept));
+      workRow.push(info.work);
+      otRow.push('00:00');
+      statusRow.push(info.weekend ? 'A' : (info.arrived ? 'P' : 'A'));
+      shiftRow.push(info.weekend ? 'OFF' : '001');
+    }
+
+    const body = [dateRow, dayRow, arrRow, deptRow, workRow, otRow, statusRow, shiftRow];
+
+    // Build column styles
+    const colStyles = { 0: { cellWidth: labelW, fontStyle: 'bold',
+                             fillColor: CFG.COLOR_LABEL_BG } };
+    for (let i = 0; i < days.length; i++) {
+      colStyles[i + 1] = { cellWidth: dayW };
+    }
+
+    doc.autoTable({
+      startY: cursorY,
+      head: [],
+      body: body,
+      theme: 'grid',
+      styles: {
+        fontSize: CFG.FONT_SIZE,
+        cellPadding: 0.9,
+        halign: 'center',
+        valign: 'middle',
+        textColor: 20,
+        lineColor: CFG.COLOR_BORDER,
+        lineWidth: 0.1,
+        minCellHeight: rowH * 0.352778,
+      },
+      columnStyles: colStyles,
+      margin: { left: CFG.MARGIN_X },
+      didParseCell: (data) => {
+        if (data.section !== 'body') return;
+        const rowIdx = data.row.index;
+        const colIdx = data.column.index;
+
+        // Weekend shading for day columns
+        if (colIdx >= 1 && rowIdx < 7) {
+          const d = days[colIdx - 1];
+          if (isWeekend(d)) {
+            data.cell.styles.fillColor = CFG.COLOR_WEEKEND;
+          }
+        }
+        // Status row colouring
+        if (rowIdx === 6 && colIdx >= 1) {
+          const d = days[colIdx - 1];
+          const iso = d.toISOString().slice(0, 10);
+          const info = dailyData[iso];
+          if (!info.weekend) {
+            data.cell.styles.fillColor = info.arrived
+              ? CFG.COLOR_PRESENT
+              : CFG.COLOR_ABSENT;
+          }
+        }
+      },
+    });
+    cursorY = doc.lastAutoTable.finalY + CFG.GAP_H;
+
+    // Page break
+    if ((idx + 1) % perPage === 0 && idx < employees.length - 1) {
+      doc.addPage([pageWmm, pageHmm], 'landscape');
+      cursorY = CFG.MARGIN_Y;
+    }
+  });
+
+  // ---- Save ----
+  const baseName = currentFile
+    ? currentFile.name.replace(/\.(txt|log)$/i, '')
+    : 'ALOG';
+  const outName = `${baseName}_report_${year}-${String(month).padStart(2, '0')}.pdf`;
+  doc.save(outName);
+
+  log(`Saved: ${outName}`, 'ok');
+  setStatus(`Done — ${outName}`);
+  alert(`PDF generated!\n\nFile: ${outName}\n\nYour browser may have saved it ` +
+        `to your Downloads folder.`);
+}
+
+/* =====================================================================
+ *  Wire up buttons
+ * ===================================================================*/
+document.getElementById('generateBtn').addEventListener('click', () => {
+  try {
+    generatePDF();
+  } catch (e) {
+    console.error(e);
+    log(`ERROR: ${e.message}`, 'err');
+    setStatus('Failed.');
+    alert(`Error: ${e.message}`);
+  }
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  currentFile = null;
+  records = [];
+  fileSelected.style.display = 'none';
+  fileInput.value = '';
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('generateBtn').disabled = true;
+  setStatus('Cleared.');
+  log('Ready.', 'info');
+});
+
+log('Ready. Select a log file to begin.', 'info');
+</script>
+</body>
+</html>
